@@ -11,6 +11,8 @@ class AppState extends ChangeNotifier {
   
   User? _currentUser;
   Admin? _currentAdmin;
+  String? _currentRole;
+  List<Transaction> _transactions = [];
   StreamSubscription? _transactionSubscription;
   String? _lastError;
   bool _isSyncing = false;
