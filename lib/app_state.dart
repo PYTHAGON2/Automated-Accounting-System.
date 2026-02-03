@@ -2,12 +2,14 @@ import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart' as auth;
 import 'package:cloud_firestore/cloud_firestore.dart' hide Transaction;
+import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 import 'dart:async';
 import 'models.dart';
 
 class AppState extends ChangeNotifier {
   final auth.FirebaseAuth _auth = auth.FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final sb.SupabaseClient _supabase = sb.Supabase.instance.client;
   
   User? _currentUser;
   Admin? _currentAdmin;
@@ -59,31 +61,54 @@ class AppState extends ChangeNotifier {
     _lastError = null;
     notifyListeners();
     
-    Query query = _firestore.collection('transactions');
+    // Initial fetch
+    _fetchTransactions();
+
+    // Subscribe to changes
+    final stream = _supabase
+        .from('transactions')
+        .stream(primaryKey: ['id']);
+    
+    // If not admin, filter by user email
+    Stream<List<Map<String, dynamic>>> filteredStream;
     if (_currentRole != 'admin') {
-      // Use email or UID consistently. signup uses email as display name if name is empty.
-      // But _onAuthStateChanged sets username to email.
-      query = query.where('user', isEqualTo: _currentUser?.username);
+      filteredStream = stream.eq('user_email', _currentUser?.email ?? '');
+    } else {
+      filteredStream = stream;
     }
 
-    _transactionSubscription = query.snapshots().listen(
-      (snapshot) {
-        _transactions = snapshot.docs.map((doc) {
-          return Transaction.fromFirestore(doc.id, doc.data() as Map<String, dynamic>);
-        }).toList();
+    _transactionSubscription = filteredStream.listen(
+      (data) {
+        _transactions = data.map((item) => Transaction.fromJson(item)).toList();
         _transactions.sort((a, b) => b.timestamp.compareTo(a.timestamp));
         _isSyncing = false;
         _lastError = null;
-        debugPrint('✅ Synced ${_transactions.length} transactions');
+        debugPrint('✅ Synced ${_transactions.length} transactions from Supabase');
         notifyListeners();
       },
       onError: (error) {
         _isSyncing = false;
-        _lastError = 'Firestore Error: $error';
-        debugPrint('❌ Firestore Error: $error');
+        _lastError = 'Supabase Error: $error';
+        debugPrint('❌ Supabase Error: $error');
         notifyListeners();
       },
     );
+  }
+
+  Future<void> _fetchTransactions() async {
+    try {
+      var query = _supabase.from('transactions').select();
+      
+      if (_currentRole != 'admin') {
+        query = query.eq('user_email', _currentUser?.email ?? '');
+      }
+
+      final data = await query.order('timestamp', ascending: false);
+      _transactions = (data as List).map((item) => Transaction.fromJson(item)).toList();
+      notifyListeners();
+    } catch (e) {
+      debugPrint('❌ Error fetching transactions: $e');
+    }
   }
 
   // Auth Functions
@@ -142,7 +167,7 @@ class AppState extends ChangeNotifier {
     try {
       final transaction = Transaction(
         id: '', 
-        user: _currentUser!.username,
+        user: _currentUser!.email,
         type: type,
         amount: amount,
         category: category,
@@ -151,8 +176,8 @@ class AppState extends ChangeNotifier {
         timestamp: DateTime.now(),
       );
 
-      await _firestore.collection('transactions').add(transaction.toFirestore());
-      debugPrint('✅ Transaction added to Firestore');
+      await _supabase.from('transactions').insert(transaction.toJson());
+      debugPrint('✅ Transaction added to Supabase');
       return null;
     } catch (e) {
       _lastError = e.toString();

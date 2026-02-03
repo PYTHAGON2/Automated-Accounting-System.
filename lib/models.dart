@@ -61,6 +61,19 @@ class Transaction {
     };
   }
 
+  Map<String, dynamic> toJson() {
+    return {
+      'user_email': user,
+      'type': type == TransactionType.income ? 'income' : 'expense',
+      'amount': amount,
+      'category': category,
+      'description': description,
+      'date': date,
+      // Supabase expects ISO8601 for timestamptz
+      'timestamp': timestamp.toIso8601String(),
+    };
+  }
+
   factory Transaction.fromFirestore(String id, Map<String, dynamic> data) {
     return Transaction(
       id: id,
@@ -71,6 +84,19 @@ class Transaction {
       description: data['description'] ?? '',
       date: data['date'] ?? '',
       timestamp: (data['timestamp'] as dynamic).toDate(),
+    );
+  }
+
+  factory Transaction.fromJson(Map<String, dynamic> json) {
+    return Transaction(
+      id: json['id']?.toString() ?? '',
+      user: json['user_email'] ?? '',
+      type: json['type'] == 'income' ? TransactionType.income : TransactionType.expense,
+      amount: (json['amount'] ?? 0).toDouble(),
+      category: json['category'] ?? '',
+      description: json['description'] ?? '',
+      date: json['date'] ?? '',
+      timestamp: DateTime.parse(json['timestamp']),
     );
   }
 }
