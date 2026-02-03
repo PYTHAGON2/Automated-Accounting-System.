@@ -11,14 +11,16 @@ class AppState extends ChangeNotifier {
   
   User? _currentUser;
   Admin? _currentAdmin;
-  String? _currentRole;
-  List<Transaction> _transactions = [];
   StreamSubscription? _transactionSubscription;
+  String? _lastError;
+  bool _isSyncing = false;
 
   User? get currentUser => _currentUser;
   Admin? get currentAdmin => _currentAdmin;
   String? get currentRole => _currentRole;
   List<Transaction> get transactions => List.unmodifiable(_transactions);
+  String? get lastError => _lastError;
+  bool get isSyncing => _isSyncing;
 
   final List<String> incomeCategories = ['Salary', 'Freelance', 'Investment', 'Business', 'Gift', 'Other Income'];
   final List<String> expenseCategories = ['Food', 'Transportation', 'Housing', 'Utilities', 'Entertainment', 'Healthcare', 'Shopping', 'Education', 'Other Expense'];
@@ -51,19 +53,35 @@ class AppState extends ChangeNotifier {
 
   void _listenToTransactions() {
     _transactionSubscription?.cancel();
+    _isSyncing = true;
+    _lastError = null;
+    notifyListeners();
     
     Query query = _firestore.collection('transactions');
     if (_currentRole != 'admin') {
+      // Use email or UID consistently. signup uses email as display name if name is empty.
+      // But _onAuthStateChanged sets username to email.
       query = query.where('user', isEqualTo: _currentUser?.username);
     }
 
-    _transactionSubscription = query.snapshots().listen((snapshot) {
-      _transactions = snapshot.docs.map((doc) {
-        return Transaction.fromFirestore(doc.id, doc.data() as Map<String, dynamic>);
-      }).toList();
-      _transactions.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-      notifyListeners();
-    });
+    _transactionSubscription = query.snapshots().listen(
+      (snapshot) {
+        _transactions = snapshot.docs.map((doc) {
+          return Transaction.fromFirestore(doc.id, doc.data() as Map<String, dynamic>);
+        }).toList();
+        _transactions.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+        _isSyncing = false;
+        _lastError = null;
+        debugPrint('✅ Synced ${_transactions.length} transactions');
+        notifyListeners();
+      },
+      onError: (error) {
+        _isSyncing = false;
+        _lastError = 'Firestore Error: $error';
+        debugPrint('❌ Firestore Error: $error');
+        notifyListeners();
+      },
+    );
   }
 
   // Auth Functions
@@ -115,21 +133,30 @@ class AppState extends ChangeNotifier {
   }
 
   // Transaction Functions
-  Future<void> addTransaction(TransactionType type, double amount, String category, String description) async {
-    if (_currentUser == null) return;
+  Future<String?> addTransaction(TransactionType type, double amount, String category, String description) async {
+    if (_currentUser == null) return 'User not logged in';
 
-    final transaction = Transaction(
-      id: '', 
-      user: _currentUser!.username,
-      type: type,
-      amount: amount,
-      category: category,
-      description: description,
-      date: DateFormat('yyyy-MM-dd').format(DateTime.now()),
-      timestamp: DateTime.now(),
-    );
+    _lastError = null;
+    try {
+      final transaction = Transaction(
+        id: '', 
+        user: _currentUser!.username,
+        type: type,
+        amount: amount,
+        category: category,
+        description: description,
+        date: DateFormat('yyyy-MM-dd').format(DateTime.now()),
+        timestamp: DateTime.now(),
+      );
 
-    await _firestore.collection('transactions').add(transaction.toFirestore());
+      await _firestore.collection('transactions').add(transaction.toFirestore());
+      debugPrint('✅ Transaction added to Firestore');
+      return null;
+    } catch (e) {
+      _lastError = e.toString();
+      debugPrint('❌ Error adding transaction: $e');
+      return e.toString();
+    }
   }
 
   // Stats

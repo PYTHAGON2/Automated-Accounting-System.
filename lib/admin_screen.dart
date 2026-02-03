@@ -34,8 +34,38 @@ class _AdminDashboardState extends State<AdminDashboard> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Welcome back, Admin ${state.currentAdmin?.name}!', 
-                style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Welcome back, Admin ${state.currentAdmin?.name}!', 
+                    style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+                  if (state.isSyncing)
+                    const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                    ),
+                ],
+              ),
+              if (state.lastError != null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.red),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.error_outline, color: Colors.red),
+                        const SizedBox(width: 8),
+                        Expanded(child: Text(state.lastError!, style: const TextStyle(color: Colors.red))),
+                      ],
+                    ),
+                  ),
+                ),
               const SizedBox(height: 16),
               
               // Admin Stats Grid
@@ -145,11 +175,21 @@ class _AdminDashboardState extends State<AdminDashboard> {
                         );
                       },
                     ),
-                    if (transactions.isEmpty)
+                    if (transactions.isEmpty && !state.isSyncing)
+                      Padding(
+                        padding: const EdgeInsets.all(32),
+                        child: Text(
+                          state.lastError != null 
+                            ? 'Failed to fetch data. Check your Firebase permissions.'
+                            : 'No transactions found matching the current filters.', 
+                          textAlign: TextAlign.center, 
+                          style: const TextStyle(color: Colors.grey),
+                        ),
+                      ),
+                    if (state.isSyncing && transactions.isEmpty)
                       const Padding(
                         padding: EdgeInsets.all(32),
-                        child: Text('No transactions found matching the current filters.', 
-                          textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
+                        child: Center(child: CircularProgressIndicator()),
                       ),
                   ],
                 ),

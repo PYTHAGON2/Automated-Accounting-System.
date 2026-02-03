@@ -29,7 +29,7 @@ class _UserDashboardState extends State<UserDashboard> {
       return;
     }
 
-    await context.read<AppState>().addTransaction(
+    final error = await context.read<AppState>().addTransaction(
       _type,
       amount,
       _selectedCategory!,
@@ -37,13 +37,22 @@ class _UserDashboardState extends State<UserDashboard> {
     );
 
     if (mounted) {
-      _amountController.clear();
-      _descriptionController.clear();
-      setState(() {
-        _selectedCategory = null;
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Transaction added!')));
+      if (error != null) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('❌ Error: $error'),
+          backgroundColor: Colors.red,
+        ));
+      } else {
+        _amountController.clear();
+        _descriptionController.clear();
+        setState(() {
+          _selectedCategory = null;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('✅ Transaction added!'),
+          backgroundColor: Colors.green,
+        ));
+      }
     }
   }
 
