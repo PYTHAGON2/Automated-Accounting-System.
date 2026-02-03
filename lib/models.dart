@@ -48,4 +48,29 @@ class Transaction {
     required this.date,
     required this.timestamp,
   });
+
+  Map<String, dynamic> toFirestore() {
+    return {
+      'user': user,
+      'type': type == TransactionType.income ? 'income' : 'expense',
+      'amount': amount,
+      'category': category,
+      'description': description,
+      'date': date,
+      'timestamp': timestamp,
+    };
+  }
+
+  factory Transaction.fromFirestore(String id, Map<String, dynamic> data) {
+    return Transaction(
+      id: id,
+      user: data['user'] ?? '',
+      type: data['type'] == 'income' ? TransactionType.income : TransactionType.expense,
+      amount: (data['amount'] ?? 0).toDouble(),
+      category: data['category'] ?? '',
+      description: data['description'] ?? '',
+      date: data['date'] ?? '',
+      timestamp: (data['timestamp'] as dynamic).toDate(),
+    );
+  }
 }

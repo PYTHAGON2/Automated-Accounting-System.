@@ -17,7 +17,7 @@ class _UserDashboardState extends State<UserDashboard> {
   final _descriptionController = TextEditingController();
   String? _selectedCategory;
 
-  void _addTransaction() {
+  Future<void> _addTransaction() async {
     if (_amountController.text.isEmpty || _selectedCategory == null || _descriptionController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please fill all fields')));
       return;
@@ -29,20 +29,22 @@ class _UserDashboardState extends State<UserDashboard> {
       return;
     }
 
-    context.read<AppState>().addTransaction(
+    await context.read<AppState>().addTransaction(
       _type,
       amount,
       _selectedCategory!,
       _descriptionController.text,
     );
 
-    _amountController.clear();
-    _descriptionController.clear();
-    setState(() {
-      _selectedCategory = null;
-    });
+    if (mounted) {
+      _amountController.clear();
+      _descriptionController.clear();
+      setState(() {
+        _selectedCategory = null;
+      });
 
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Transaction added!')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Transaction added!')));
+    }
   }
 
   @override

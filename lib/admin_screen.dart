@@ -73,7 +73,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                           decoration: const InputDecoration(labelText: 'Filter by User'),
                           items: [
                             const DropdownMenuItem<String?>(value: null, child: Text('All Users')),
-                            ...state.allUsers.map((u) => DropdownMenuItem<String?>(value: u.username, child: Text(u.name))),
+                            ...state.allUserEmails.map((email) => DropdownMenuItem<String?>(value: email, child: Text(email))),
                           ],
                           onChanged: (v) => setState(() => _userFilter = v),
                         ),
@@ -111,7 +111,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                       child: const Row(
                         children: [
                           Expanded(flex: 2, child: Text('Date', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-                          Expanded(flex: 2, child: Text('User', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+                          Expanded(flex: 2, child: Text('User (Email)', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
                           Expanded(flex: 2, child: Text('Type', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
                           Expanded(flex: 2, child: Text('Amount', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
                           Expanded(flex: 3, child: Text('Description', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
@@ -127,7 +127,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                       itemBuilder: (context, index) {
                         final tx = transactions[index];
                         final isIncome = tx.type == TransactionType.income;
-                        final userName = state.allUsers.firstWhere((u) => u.username == tx.user).name;
+                        final userName = tx.user;
                         return Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                           child: Row(

@@ -1,15 +1,19 @@
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
+import 'package:firebase_auth/firebase_auth.dart' as auth;
+import 'package:cloud_firestore/cloud_firestore.dart' hide Transaction;
+import 'dart:async';
 import 'models.dart';
 
 class AppState extends ChangeNotifier {
-  final Map<String, User> _users = {};
-  final Map<String, Admin> _admins = {};
-  final List<Transaction> _transactions = [];
+  final auth.FirebaseAuth _auth = auth.FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   
   User? _currentUser;
   Admin? _currentAdmin;
   String? _currentRole;
+  List<Transaction> _transactions = [];
+  StreamSubscription? _transactionSubscription;
 
   User? get currentUser => _currentUser;
   Admin? get currentAdmin => _currentAdmin;
@@ -19,63 +23,103 @@ class AppState extends ChangeNotifier {
   final List<String> incomeCategories = ['Salary', 'Freelance', 'Investment', 'Business', 'Gift', 'Other Income'];
   final List<String> expenseCategories = ['Food', 'Transportation', 'Housing', 'Utilities', 'Entertainment', 'Healthcare', 'Shopping', 'Education', 'Other Expense'];
 
-  // Auth Functions
-  String? signup(String name, String email, String username, String password) {
-    if (_users.containsKey(username)) return 'Username already exists';
-    if (_users.values.any((u) => u.email == email)) return 'Email already registered';
-
-    _users[username] = User(
-      username: username,
-      password: password,
-      name: name,
-      email: email,
-      joinDate: DateFormat('yyyy-MM-dd').format(DateTime.now()),
-    );
-    notifyListeners();
-    return null;
+  AppState() {
+    _auth.authStateChanges().listen(_onAuthStateChanged);
   }
 
-  String? login(String username, String password) {
-    if (!_users.containsKey(username)) return 'Username not found';
-    if (_users[username]!.password != password) return 'Invalid password';
-
-    _currentUser = _users[username];
-    _currentRole = 'user';
+  Future<void> _onAuthStateChanged(auth.User? firebaseUser) async {
+    if (firebaseUser == null) {
+      _currentUser = null;
+      _currentRole = null;
+      _transactions = [];
+      _transactionSubscription?.cancel();
+    } else {
+      _currentUser = User(
+        username: firebaseUser.email ?? firebaseUser.uid,
+        password: '', 
+        name: firebaseUser.displayName ?? firebaseUser.email?.split('@')[0] ?? 'User',
+        email: firebaseUser.email ?? '',
+        joinDate: firebaseUser.metadata.creationTime != null 
+          ? DateFormat('yyyy-MM-dd').format(firebaseUser.metadata.creationTime!) 
+          : DateFormat('yyyy-MM-dd').format(DateTime.now()),
+      );
+      _currentRole = 'user';
+      _listenToTransactions();
+    }
     notifyListeners();
-    return null;
+  }
+
+  void _listenToTransactions() {
+    _transactionSubscription?.cancel();
+    
+    Query query = _firestore.collection('transactions');
+    if (_currentRole != 'admin') {
+      query = query.where('user', isEqualTo: _currentUser?.username);
+    }
+
+    _transactionSubscription = query.snapshots().listen((snapshot) {
+      _transactions = snapshot.docs.map((doc) {
+        return Transaction.fromFirestore(doc.id, doc.data() as Map<String, dynamic>);
+      }).toList();
+      _transactions.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+      notifyListeners();
+    });
+  }
+
+  // Auth Functions
+  Future<String?> signup(String name, String email, String username, String password) async {
+    try {
+      final credential = await _auth.createUserWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+      await credential.user?.updateDisplayName(name);
+      return null;
+    } on auth.FirebaseAuthException catch (e) {
+      return e.message;
+    } catch (e) {
+      return e.toString();
+    }
+  }
+
+  Future<String?> login(String email, String password) async {
+    try {
+      await _auth.signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+      return null;
+    } on auth.FirebaseAuthException catch (e) {
+      return e.message;
+    } catch (e) {
+      return e.toString();
+    }
   }
 
   void adminLogin(String username, String password) {
-    if (!_admins.containsKey(username)) {
-      _admins[username] = Admin(
-        username: username,
-        password: password,
-        name: '${username[0].toUpperCase()}${username.substring(1)} (Admin)',
-      );
-    } else if (_admins[username]!.password != password) {
-      // In the original JS, it just lets you in if you specify a NEW admin, 
-      // but if it exists it checks password. 
-      // For simplicity of this conversion, let's keep that logic.
-    }
-
-    _currentAdmin = _admins[username];
+    _currentAdmin = Admin(
+      username: username,
+      password: password,
+      name: '${username[0].toUpperCase()}${username.substring(1)} (Admin)',
+    );
     _currentRole = 'admin';
+    _listenToTransactions();
     notifyListeners();
   }
 
-  void logout() {
-    _currentUser = null;
+  Future<void> logout() async {
+    await _auth.signOut();
     _currentAdmin = null;
     _currentRole = null;
     notifyListeners();
   }
 
   // Transaction Functions
-  void addTransaction(TransactionType type, double amount, String category, String description) {
+  Future<void> addTransaction(TransactionType type, double amount, String category, String description) async {
     if (_currentUser == null) return;
 
     final transaction = Transaction(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      id: '', 
       user: _currentUser!.username,
       type: type,
       amount: amount,
@@ -85,29 +129,24 @@ class AppState extends ChangeNotifier {
       timestamp: DateTime.now(),
     );
 
-    _transactions.add(transaction);
-    notifyListeners();
+    await _firestore.collection('transactions').add(transaction.toFirestore());
   }
 
   // Stats
   double get totalIncome => _transactions
-      .where((t) => t.user == _currentUser?.username && t.type == TransactionType.income)
-      .fold(0, (sum, t) => sum + t.amount);
+      .where((t) => (_currentRole == 'admin' || t.user == _currentUser?.username) && t.type == TransactionType.income)
+      .fold(0.0, (previousValue, t) => previousValue + t.amount);
 
   double get totalExpenses => _transactions
-      .where((t) => t.user == _currentUser?.username && t.type == TransactionType.expense)
-      .fold(0, (sum, t) => sum + t.amount);
+      .where((t) => (_currentRole == 'admin' || t.user == _currentUser?.username) && t.type == TransactionType.expense)
+      .fold(0.0, (previousValue, t) => previousValue + t.amount);
 
   double get netBalance => totalIncome - totalExpenses;
 
   // Admin Stats
-  int get totalUsersCount => _users.length;
+  int get totalUsersCount => _transactions.map((t) => t.user).toSet().length;
   int get totalTransactionsCount => _transactions.length;
-  double get systemTotalBalance {
-    final income = _transactions.where((t) => t.type == TransactionType.income).fold(0.0, (sum, t) => sum + t.amount);
-    final expenses = _transactions.where((t) => t.type == TransactionType.expense).fold(0.0, (sum, t) => sum + t.amount);
-    return income - expenses;
-  }
+  double get systemTotalBalance => totalIncome - totalExpenses;
 
   List<Transaction> getFilteredTransactions({String? userFilter, TransactionType? typeFilter}) {
     return _transactions.where((t) {
@@ -117,5 +156,11 @@ class AppState extends ChangeNotifier {
     }).toList()..sort((a, b) => b.timestamp.compareTo(a.timestamp));
   }
 
-  List<User> get allUsers => _users.values.toList();
+  List<String> get allUserEmails => _transactions.map((t) => t.user).toSet().toList().cast<String>();
+
+  @override
+  void dispose() {
+    _transactionSubscription?.cancel();
+    super.dispose();
+  }
 }

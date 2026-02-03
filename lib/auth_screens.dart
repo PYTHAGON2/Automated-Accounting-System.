@@ -14,10 +14,10 @@ class _LoginScreenState extends State<LoginScreen> {
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
 
-  void _login() {
+  Future<void> _login() async {
     final state = context.read<AppState>();
-    final error = state.login(_usernameController.text, _passwordController.text);
-    if (error != null) {
+    final error = await state.login(_usernameController.text, _passwordController.text);
+    if (error != null && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
     }
   }
@@ -50,7 +50,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       const SizedBox(height: 24),
                       TextField(
                         controller: _usernameController,
-                        decoration: const InputDecoration(labelText: 'Username', hintText: 'Enter your username'),
+                        decoration: const InputDecoration(labelText: 'Email Address', hintText: 'Enter your email'),
                       ),
                       const SizedBox(height: 16),
                       TextField(
@@ -110,23 +110,23 @@ class _SignupScreenState extends State<SignupScreen> {
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
 
-  void _signup() {
+  Future<void> _signup() async {
     if (_passwordController.text != _confirmPasswordController.text) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Passwords do not match')));
       return;
     }
     
     final state = context.read<AppState>();
-    final error = state.signup(
+    final error = await state.signup(
       _nameController.text,
       _emailController.text,
       _usernameController.text,
       _passwordController.text,
     );
     
-    if (error != null) {
+    if (error != null && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
-    } else {
+    } else if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Account created successfully!')));
       Navigator.pop(context);
     }
