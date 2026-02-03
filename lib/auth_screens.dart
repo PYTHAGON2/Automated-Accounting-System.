@@ -202,6 +202,9 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
 
   void _login() {
     context.read<AppState>().adminLogin(_usernameController.text, _passwordController.text);
+    if (mounted) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    }
   }
 
   @override
